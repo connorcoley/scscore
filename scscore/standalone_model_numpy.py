@@ -37,15 +37,19 @@ class SCScorer():
     def __init__(self, score_scale=score_scale):
         self.vars = []
         self.score_scale = score_scale
+        self._restored = False
 
-    def restore(self, weight_path):
+    def restore(self, weight_path=os.path.join(project_root, 'models', 'full_reaxys_model', 'model.ckpt-10654.as_numpy.pickle')):
         import cPickle as pickle
         with open(weight_path, 'rb') as fid:
             self.vars = pickle.load(fid)
         print('Restored variables from {}'.format(weight_path))
+        self._restored = True
         return self
 
     def apply(self, x):
+        if not self._restored:
+            raise ValueError('Must restore model weights!')
         # Each pair of vars is a weight and bias term
         for i in range(0, len(self.vars), 2):
             last_layer = (i == len(self.vars)-2)
