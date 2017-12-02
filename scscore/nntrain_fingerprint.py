@@ -335,15 +335,15 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
                     prompt = raw_input('\nEnter SMILES (or quit): ')
                     if prompt.strip() == 'quit':
                         break
-                    if str('>>') in prompt: # reaction
-                        reactants = prompt.strip().split('>>')[0].split('.')
+                    if str('>') in prompt: # reaction
+                        reactants = prompt.strip().split('>')[0].split('.')
                         reactants_smi = []
                         reactants_score = 0.
                         for reactant in reactants:
                             (smi, cur_score) = get_score_from_smi(reactant)
                             reactants_smi.append(smi)
                             reactants_score = max(reactants_score, cur_score)
-                        products = prompt.strip().split('>>')[1].split('.')
+                        products = prompt.strip().split('>')[2].split('.')
                         products_smi = []
                         products_score = 0.
                         for product in products:
