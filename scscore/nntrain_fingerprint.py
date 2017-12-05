@@ -26,6 +26,7 @@ FP_rad = 2
 
 parser = OptionParser()
 parser.add_option("-t", "--train", dest="train_path", default=os.path.join(project_root, 'data', 'reaxys_limit10.txt'))
+parser.add_option("--h5", dest="h5_suffix", default=".h5")
 parser.add_option("-m", "--save_dir", dest="save_path", default=os.path.join(project_root, 'models', 'example_model'))
 parser.add_option("-b", "--batch", dest="batch_size", default=16384)
 parser.add_option("-w", "--hidden", dest="hidden_size", default=300)
@@ -47,6 +48,10 @@ test = opts.test
 save_interval = int(opts.save_interval)
 verbose_test = bool(opts.verbose_test)
 interactive_mode = bool(opts.interactive)
+h5_suffix = opts.h5_suffix
+
+if '2048' in h5_suffix:
+    FP_len = 2048
 
 if interactive_mode:
     batch_size = 2 # keep it small
@@ -55,11 +60,23 @@ if not os.path.isdir(opts.save_path):
     os.mkdir(opts.save_path)
 
 import rdkit.Chem.AllChem as AllChem
-def mol_to_fp(mol, radius=FP_rad, nBits=FP_len):
-    if mol is None:
-        return np.zeros((nBits,), dtype=np.float32)
-    return np.array(AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=nBits, 
-        useChirality=True), dtype=np.bool)
+if 'counts' not in opts.save_path and 'uint8' not in opts.h5_suffix:
+    # bool version
+    def mol_to_fp(mol, radius=FP_rad, nBits=FP_len):
+        if mol is None:
+            return np.zeros((nBits,), dtype=np.float32)
+        return np.array(AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=nBits, 
+            useChirality=True), dtype=np.bool)
+else:
+    # uint8 version
+    def mol_to_fp(mol, radius=FP_rad, nBits=FP_len):
+        if mol is None:
+            return np.array((nBits,), dtype=np.uint8)
+        fp = AllChem.GetMorganFingerprint(mol, radius, useChirality=True) # uitnsparsevect
+        fp_folded = np.array((1, FP_len), dtype=np.uint8)
+        for k, v in fp.GetNonzeroElements().iteritems():
+            fp_folded[k % nBits] = v 
+        return fp_folded
 
 def smi_to_fp(smi, radius=FP_rad, nBits=FP_len):
     if not smi:
@@ -127,22 +144,28 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
 
 
     def read_data_once(path, coord, frag='valid'):
-        data = []
-        with open(path, 'r') as f:
-            for line in f:
-                rex, n, _id = line.strip("\r\n").split(' ')
-                r,p = rex.split('>>')
-                if ('.' in p) or (not p):
-                    continue # do not allow multiple products or none
-                for r_splt in r.split('.'):
-                    if r_splt:
-                        data.append((_id, n, r_splt, p))
-                
-        random.seed(123)
-        random.shuffle(data)
+        if os.path.isfile(path + '.pkl'):
+            with open(path + '.pkl', 'r') as fid:
+                data = pickle.load(fid)
+        else:
+            data = []
+            with open(path, 'r') as f:
+                for line in f:
+                    rex, n, _id = line.strip("\r\n").split(' ')
+                    r,p = rex.split('>>')
+                    if ('.' in p) or (not p):
+                        continue # do not allow multiple products or none
+                    n = int(n)
+                    for r_splt in r.split('.'):
+                        if r_splt:
+                            data.append((_id, n, r_splt, p))
+            random.seed(123)
+            random.shuffle(data)
+            with open(path + '.pkl', 'w') as fid:
+                data = pickle.dump(data, fid, -1)
 
         # h5py was generated post-shuffle
-        f = h5py.File(path + '.h5', 'r')
+        f = h5py.File(path + h5_suffix, 'r')
         data_fps = f['data_fps']
 
         data_len = len(data)
@@ -201,25 +224,31 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
         coord.request_stop()
 
     def read_data_master(path, coord):
-        if not os.path.isfile(path + '.h5'):
+        if not os.path.isfile(path + h5_suffix):
             quit('Need to run .h5 script first to get FPs')
 
-        data = []
-        with open(path, 'r') as f:
-            for line in f:
-                rex, n, _id = line.strip("\r\n").split(' ')
-                r,p = rex.split('>>')
-                if ('.' in p) or (not p):
-                    continue # do not allow multiple products or none
-                n = int(n)
-                for r_splt in r.split('.'):
-                    if r_splt:
-                        data.append((_id, n, r_splt, p))
-        random.seed(123)
-        random.shuffle(data)
+        if os.path.isfile(path + '.pkl'):
+            with open(path + '.pkl', 'r') as fid:
+                data = pickle.load(fid)
+        else:
+            data = []
+            with open(path, 'r') as f:
+                for line in f:
+                    rex, n, _id = line.strip("\r\n").split(' ')
+                    r,p = rex.split('>>')
+                    if ('.' in p) or (not p):
+                        continue # do not allow multiple products or none
+                    n = int(n)
+                    for r_splt in r.split('.'):
+                        if r_splt:
+                            data.append((_id, n, r_splt, p))
+            random.seed(123)
+            random.shuffle(data)
+            with open(path + '.pkl', 'w') as fid:
+                data = pickle.dump(data, fid, -1)
 
         # h5py is post-shuffle
-        f = h5py.File(path + '.h5', 'r')
+        f = h5py.File(path + h5_suffix, 'r')
         data_fps = f['data_fps']
 
         data_len = len(data)
@@ -424,7 +453,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
             print(summarystring)
             sys.stdout.flush()
             fidsum = open(summary_path, 'a')
-            fidsum.write('[%s] %s\n' % (opts.checkpoint, summarystring))
+            fidsum.write('[%s-%s] %s\n' % (opts.checkpoint, opts.test, summarystring))
             fidsum.close()
 
             if verbose_test: 
