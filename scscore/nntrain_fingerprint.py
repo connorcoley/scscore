@@ -69,14 +69,14 @@ if 'counts' not in opts.save_path and 'uint8' not in opts.h5_suffix:
             useChirality=True), dtype=np.bool)
 else:
     # uint8 version
-    def mol_to_fp(mol, radius=FP_rad, nBits=FP_len):
+    def mol_to_fp(mol, radius=FP_rad, nBits=FP_len, convFunc=np.array):
         if mol is None:
-            return np.array((nBits,), dtype=np.uint8)
+            return convFunc((nBits,), dtype=dtype)
         fp = AllChem.GetMorganFingerprint(mol, radius, useChirality=True) # uitnsparsevect
-        fp_folded = np.array((1, FP_len), dtype=np.uint8)
+        fp_folded = np.zeros((nBits,), dtype=dtype)
         for k, v in fp.GetNonzeroElements().iteritems():
-            fp_folded[k % nBits] = v 
-        return fp_folded
+            fp_folded[k % nBits] += v 
+        return convFunc(fp_folded)
 
 def smi_to_fp(smi, radius=FP_rad, nBits=FP_len):
     if not smi:

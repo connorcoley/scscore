@@ -19,17 +19,6 @@ min_separation = 0.25
 FP_len = 1024
 FP_rad = 2
 
-def mol_to_fp(mol, radius=FP_rad, nBits=FP_len):
-    if mol is None:
-        return np.zeros((nBits,), dtype=np.float32)
-    return np.array(AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=nBits, 
-        useChirality=True), dtype=np.bool)
-
-def smi_to_fp(smi, radius=FP_rad, nBits=FP_len):
-    if not smi:
-        return np.zeros((nBits,), dtype=np.float32)
-    return mol_to_fp(Chem.MolFromSmiles(smi), radius, nBits)
-
 def sigmoid(x):
   return 1 / (1 + math.exp(-x))
 
@@ -39,13 +28,38 @@ class SCScorer():
         self.score_scale = score_scale
         self._restored = False
 
-    def restore(self, weight_path=os.path.join(project_root, 'models', 'full_reaxys_model', 'model.ckpt-10654.as_numpy.pickle')):
+    def restore(self, weight_path=os.path.join(project_root, 'models', 'full_reaxys_model_1024bool', 'model.ckpt-10654.as_numpy.pickle'), FP_rad=FP_rad, FP_len=FP_len):
+        self.FP_len = FP_len; self.FP_rad = FP_rad 
+
         import cPickle as pickle
         with open(weight_path, 'rb') as fid:
             self.vars = pickle.load(fid)
         print('Restored variables from {}'.format(weight_path))
+
+        if 'uint8' in weight_path or 'counts' in weight_path:
+            def mol_to_fp(self, mol):
+                if mol is None:
+                    return np.array((self.FP_len,), dtype=np.uint8)
+                fp = AllChem.GetMorganFingerprint(mol, self.FP_rad, useChirality=True) # uitnsparsevect
+                fp_folded = np.zeros((self.FP_len,), dtype=np.uint8)
+                for k, v in fp.GetNonzeroElements().iteritems():
+                    fp_folded[k % self.FP_len] += v 
+                return np.array(fp_folded)
+        else:
+            def mol_to_fp(self, mol):
+                if mol is None:
+                    return np.zeros((self.FP_len,), dtype=np.float32)
+                return np.array(AllChem.GetMorganFingerprintAsBitVect(mol, self.FP_rad, nBits=self.FP_len, 
+                    useChirality=True), dtype=np.bool)
+        self.mol_to_fp = mol_to_fp
+
         self._restored = True
         return self
+
+    def smi_to_fp(self, smi):
+        if not smi:
+            return np.zeros((self.FP_len,), dtype=np.float32)
+        return self.mol_to_fp(self, Chem.MolFromSmiles(smi))
 
     def apply(self, x):
         if not self._restored:
@@ -64,7 +78,7 @@ class SCScorer():
     def get_score_from_smi(self, smi='', v=False):
         if not smi:
             return ('', 0.)
-        fp = np.array((smi_to_fp(smi)), dtype=np.float32)
+        fp = np.array((self.smi_to_fp(smi)), dtype=np.float32)
         if sum(fp) == 0:
             if v: print('Could not get fingerprint?')
             cur_score = 0.
@@ -81,7 +95,21 @@ class SCScorer():
 
 if __name__ == '__main__':
     model = SCScorer()    
-    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model', 'model.ckpt-10654.as_numpy.pickle'))
+    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_1024bool', 'model.ckpt-10654.as_numpy.pickle'))
+    smis = ['CCCOCCC', 'CCCNc1ccccc1']
+    for smi in smis:
+        (smi, sco) = model.get_score_from_smi(smi)
+        print('%.4f <--- %s' % (sco, smi))
+
+    model = SCScorer()    
+    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_2048bool', 'model.ckpt-10654.as_numpy.pickle'), FP_len=2048)
+    smis = ['CCCOCCC', 'CCCNc1ccccc1']
+    for smi in smis:
+        (smi, sco) = model.get_score_from_smi(smi)
+        print('%.4f <--- %s' % (sco, smi))
+
+    model = SCScorer()    
+    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_1024uint8', 'model.ckpt-10654.as_numpy.pickle'))
     smis = ['CCCOCCC', 'CCCNc1ccccc1']
     for smi in smis:
         (smi, sco) = model.get_score_from_smi(smi)
