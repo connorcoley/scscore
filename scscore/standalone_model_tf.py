@@ -24,6 +24,9 @@ FP_len = 1024
 FP_rad = 2
 batch_size = 2
 
+# Note: if you want to use the other models with longer or different
+# fingerprints, then this class needs to be modified
+
 def mol_to_fp(mol, radius=FP_rad, nBits=FP_len):
     if mol is None:
         return np.zeros((nBits,), dtype=np.float32)
@@ -96,9 +99,9 @@ class SCScorer():
 if __name__ == '__main__':
     model = SCScorer()
     model.build()
-    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model'), 'ckpt-10654')
+    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_1024bool'), 'ckpt-10654')
     smis = ['CCCOCCC', 'CCCNc1ccccc1']
     for smi in smis:
         (smi, sco) = model.get_score_from_smi(smi)
         print('%.4f <--- %s' % (sco, smi))
-    model.dump_to_numpy_arrays(os.path.join(project_root, 'models', 'full_reaxys_model', 'model.ckpt-10654.as_numpy.pickle'))
+    model.dump_to_numpy_arrays(os.path.join(project_root, 'models', 'full_reaxys_model_1024bool', 'model.ckpt-10654.as_numpy.pickle'))
