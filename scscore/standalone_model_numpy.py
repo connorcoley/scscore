@@ -9,9 +9,9 @@ import numpy as np
 import time
 import rdkit.Chem as Chem
 import rdkit.Chem.AllChem as AllChem
-import cPickle as pickle
 import json
 import gzip
+import six
 
 import os
 project_root = os.path.dirname(os.path.dirname(__file__))
@@ -42,7 +42,7 @@ class SCScorer():
                     return np.array((self.FP_len,), dtype=np.uint8)
                 fp = AllChem.GetMorganFingerprint(mol, self.FP_rad, useChirality=True) # uitnsparsevect
                 fp_folded = np.zeros((self.FP_len,), dtype=np.uint8)
-                for k, v in fp.GetNonzeroElements().iteritems():
+                for k, v in six.iteritems(fp.GetNonzeroElements()):
                     fp_folded[k % self.FP_len] += v
                 return np.array(fp_folded)
         else:
@@ -95,6 +95,7 @@ class SCScorer():
 
     def _load_vars(self, weight_path):
         if weight_path.endswith('pickle'):
+            import cPickle as pickle
             with open(weight_path, 'rb') as fid:
                 self.vars = pickle.load(fid)
                 self.vars = [x.tolist() for x in self.vars]
