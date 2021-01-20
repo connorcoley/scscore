@@ -12,6 +12,7 @@ import rdkit.Chem.AllChem as AllChem
 import json
 import gzip
 import six
+import argparse, pandas as pd
 
 import os
 project_root = os.path.dirname(os.path.dirname(__file__))
@@ -107,24 +108,36 @@ class SCScorer():
                 self.vars = [np.array(x) for x in self.vars]
 
 
+
+def args():
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument("-ifile", required=True)
+    parser.add_argument("-ofile", required=True)
+    parser.add_argument("-model", choices=["full_reaxys_model_1024bool",
+                                          "full_reaxys_model_2048bool",
+                                          "full_reaxys_model_1024uint8"],
+                                          default="full_reaxys_model_2048bool")
+
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == '__main__':
-    model = SCScorer()
-    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_1024bool', 'model.ckpt-10654.as_numpy.json.gz'))
-    smis = ['CCCOCCC', 'CCCNc1ccccc1']
-    for smi in smis:
-        (smi, sco) = model.get_score_from_smi(smi)
-        print('%.4f <--- %s' % (sco, smi))
+    args = args()
 
     model = SCScorer()
-    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_2048bool', 'model.ckpt-10654.as_numpy.json.gz'), FP_len=2048)
-    smis = ['CCCOCCC', 'CCCNc1ccccc1']
-    for smi in smis:
-        (smi, sco) = model.get_score_from_smi(smi)
-        print('%.4f <--- %s' % (sco, smi))
+    model.restore(os.path.join(project_root, 'models', "full_reaxys_model_1024bool", 'model.ckpt-10654.as_numpy.json.gz'))
 
-    model = SCScorer()
-    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_1024uint8', 'model.ckpt-10654.as_numpy.json.gz'))
-    smis = ['CCCOCCC', 'CCCNc1ccccc1']
-    for smi in smis:
-        (smi, sco) = model.get_score_from_smi(smi)
-        print('%.4f <--- %s' % (sco, smi))
+    smis = pd.read_csv(args.ifile, header=None)
+    smis.columns = ["Smiles"]
+    smis["SCscore"] = smis["Smiles"].apply(lambda x: model.get_score_from_smi(x)[1])
+
+    smis.to_csv(args.ofile, index=False)
+
+    # model = SCScorer()
+    # model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_1024uint8', 'model.ckpt-10654.as_numpy.json.gz'))
+    # smis = ['CCCOCCC', 'CCCNc1ccccc1']
+    # for smi in smis:
+    #     (smi, sco) = model.get_score_from_smi(smi)
+    #     print('%.4f <--- %s' % (sco, smi))
